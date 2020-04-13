@@ -3,7 +3,6 @@ package main;
 import java.awt.*;
 
 public class Player {
-    private int Score;
     private Color color;
     private boolean isNpc;
     private boolean currentPlayer;

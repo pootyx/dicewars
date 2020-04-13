@@ -50,19 +50,10 @@ public class Cell extends JButton {
         this.setText(String.valueOf(value));
     }
 
-    boolean isAMine() {
-        return value == MINE;
-    }
-
     void reset() {
         setValue(1);
         setEnabled(false);
         setText("1");
-    }
-
-    void reveal() {
-        setEnabled(false);
-        setText(isAMine() ? "X" : String.valueOf(value));
     }
 
     public Cell[] getNeighbours(Cell[][] cells) {
@@ -82,8 +73,8 @@ public class Cell extends JButton {
                 int rowValue = row + rowOffset;
                 int colValue = col + colOffset;
 
-                if (rowValue < 0 || rowValue >= gridSize
-                        || colValue < 0 || colValue >= gridSize) {
+                if (rowValue < 0 || rowValue >= gridSize  ||
+                        colValue < 0 || colValue >= gridSize) {
                     continue;
                 }
 
@@ -118,26 +109,4 @@ public class Cell extends JButton {
         return player;
     }
 
-    public void cascade(Set<Cell> positionsToClear, Cell[][] cells) {
-        while (!positionsToClear.isEmpty()) {
-            // Set does not have a clean way for retrieving
-            // a single element. This is the best way I could think of.
-            Cell cell = positionsToClear.iterator().next();
-            positionsToClear.remove(cell);
-            reveal();
-
-//            getNeighbours(reusableStorage, cells);
-            for (Cell neighbour : reusableStorage) {
-                if (neighbour == null) {
-                    break;
-                }
-                if (neighbour.getValue() == 0
-                        && neighbour.isEnabled()) {
-                    positionsToClear.add(neighbour);
-                } else {
-                    neighbour.reveal();
-                }
-            }
-        }
-    }
 }

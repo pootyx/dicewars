@@ -345,7 +345,7 @@ public class Main {
         for (int row = 0; row < gridSize; row++) {
             for (int col = 0; col < gridSize; col++) {
                 if (!cells[row][col].isEnabled()) {
-                    cells[row][col].reveal();
+                    cells[row][col].getValue();
                 }
             }
         }
