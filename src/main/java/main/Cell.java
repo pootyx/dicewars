@@ -3,17 +3,8 @@ package main;
 import javax.swing.*;
 import java.awt.event.ActionListener;
 import java.util.Objects;
-import java.util.Set;
 
 public class Cell extends JButton {
-
-    public int getRow() {
-        return row;
-    }
-
-    public int getCol() {
-        return col;
-    }
 
     private final int row;
     private final int col;
@@ -23,10 +14,6 @@ public class Cell extends JButton {
     // This fixed amount of memory is to avoid repeatedly declaring
     // new arrays every time a cell's neighbours are to be retrieved.
     private static Cell[] reusableStorage = new Cell[8];
-
-    private static final int MINE = 10;
-
-    private static final int gridSize = 4;
 
     Cell(final int row, final int col,
          final ActionListener actionListener) {
@@ -56,7 +43,12 @@ public class Cell extends JButton {
         setText("1");
     }
 
-    public Cell[] getNeighbours(Cell[][] cells) {
+    /**
+     * Get the neighbours of the current cell
+     * @param cells the Array of cells created at the start of the game
+     * @return the neighbours of the current cell
+     */
+    public Cell[] getNeighbours(Cell[][] cells, int gridSize) {
         // Empty all elements first
         for (int i = 0; i < reusableStorage.length; i++) {
             reusableStorage[i] = null;
@@ -76,6 +68,11 @@ public class Cell extends JButton {
                 if (rowValue < 0 || rowValue >= gridSize  ||
                         colValue < 0 || colValue >= gridSize) {
                     continue;
+                }
+
+                if (cells[rowValue][colValue] == null) {
+                    System.out.println(rowValue);
+                    System.out.println(colValue);
                 }
 
                 reusableStorage[index++] = cells[rowValue][colValue];

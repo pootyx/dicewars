@@ -13,23 +13,21 @@ public class Main {
 
     private static final int NUMBER_OF_PLAYER = 4;
 
-    private int gridSize;
-
     private Cell[][] cells;
+
     private Cell[] war = new Cell[2];
 
     private JFrame  frame;
     private JButton reset;
-    private JButton giveUp;
     private JButton endTurn;
     private List<Player> players;
+
+    private final int gridSize = 4;
 
     private final ActionListener actionListener = actionEvent -> {
         Object source = actionEvent.getSource();
         if (source == reset) {
-            createDices();
-        } else if (source == giveUp) {
-            revealBoardAndDisplay("You gave up.");
+            initPlayers();
         } else if (source == endTurn) {
             endTurn();
         } else {
@@ -37,32 +35,32 @@ public class Main {
         }
     };
 
-    private Main(final int gridSize) {
-        this.gridSize = gridSize;
+    private Main() {
         cells = new Cell[gridSize][gridSize];
-
         frame = new JFrame("Dice Wars");
         frame.setSize(SIZE, SIZE);
         frame.setLayout(new BorderLayout());
 
         initializeButtonPanel();
-        initializeGrid();
+        initializeGame();
 
         frame.setLocationRelativeTo(null);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setVisible(true);
     }
 
+    /**
+     * Remove the looser from the player Array so it will not have any more turn
+     * Using removeIf() so I will not get ConcurrentModificationException
+     */
     private void removeLoosers() {
-        for (Player player : players) {
-            if (getPlayerCells(player).size() == 0) {
-                players.remove(player);
-            }
-        }
+        players.removeIf(player -> getPlayerCells(player).size() == 0);
     }
 
-    private void endTurn() {
-        removeLoosers();
+    /**
+     * Add the extra dices at the end of the turn and set the next player as current
+     */
+    private void addExtraDicesAndPassTurn() {
         for (int i = 0; i != players.size(); i++) {
             if (players.get(i).isCurrentPlayer()) {
                 addExtraDices(players.get(i));
@@ -75,32 +73,98 @@ public class Main {
                 }
             }
         }
+    }
+
+    /**
+     * This will ensure to handle actions when the end turn button is pressed
+     */
+    private void endTurn() {
+        removeLoosers();
+        addExtraDicesAndPassTurn();
+        enemyMovement();
         disableAllCells();
         startTurn();
+    }
+
+    private Player getNextPlayer(Player player) {
+        try {
+            return players.get(players.indexOf(player) + 1);
+        } catch (IndexOutOfBoundsException e) {
+            return players.get(0);
+        }
+    }
+
+    /**
+     * Handle the automated attacks from the machine in a very simple way.
+     * Check every available cell's neighbours and attack whenever possible.
+     */
+    private void enemyMovement() {
+        for (Player player : players) {
+            if (player.isNpc() && player.isCurrentPlayer()){
+                List<Cell> playerCells = getPlayerCells(player);
+                for (Cell playerCell : playerCells) {
+                    if (playerCell.getValue() > 1) {
+                        war[0] = playerCell;
+                        Cell[] neighbours = playerCell.getNeighbours(cells, gridSize);
+                        for (Cell neighbour : neighbours) {
+                            if (neighbour == null) { // weird flex but ok
+                                continue;
+                            }
+                            if (neighbour.getPlayer() != player) {
+                                war[1] = neighbour;
+                                if (isAttackSuccessful(war)) {
+                                    moveToWonField(neighbour, war);
+                                    playerCells = getPlayerCells(player);
+                                } else {
+                                    playerCell.setValue(1);
+                                    playerCell.setText("1");
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                addExtraDicesAndPassTurn();
+                if (!getNextPlayer(player).isNpc()) {
+                    if (getPlayerCells(getNextPlayer(player)).size() == 0) {
+                        youLost();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private void youLost() {
+        JOptionPane.showMessageDialog(
+                frame, "You have lost!", "Game Over",
+                JOptionPane.ERROR_MESSAGE
+        );
     }
 
     private void initializeButtonPanel() {
         JPanel buttonPanel = new JPanel();
 
         reset = new JButton("Reset");
-        giveUp = new JButton("Give Up");
         endTurn = new JButton("End Turn");
 
         reset.addActionListener(actionListener);
-        giveUp.addActionListener(actionListener);
         endTurn.addActionListener(actionListener);
 
         buttonPanel.add(reset);
-        buttonPanel.add(giveUp);
         buttonPanel.add(endTurn);
         frame.add(buttonPanel, BorderLayout.SOUTH);
     }
 
+    /**
+     * This will ensure to only enable the current player cells with more then 1 dice
+     */
     private void startTurn() {
         for (int row = 0; row < gridSize; row++) {
             for (int col = 0; col < gridSize; col++) {
                 if (cells[row][col].getPlayer().isCurrentPlayer() && cells[row][col].getValue() > 1) {
-                    for (Cell cell : cells[row][col].getNeighbours(cells)) {
+                    for (Cell cell : cells[row][col].getNeighbours(cells, gridSize)) {
                         try {
                             if (!cell.getPlayer().isCurrentPlayer()){
                                 cells[row][col].setEnabled(true);
@@ -108,7 +172,6 @@ public class Main {
                             }
                         } catch (NullPointerException e) {
                             // edge cell
-                            continue;
                         }
                     }
                 }
@@ -116,21 +179,37 @@ public class Main {
         }
     }
 
+    /**
+     * Initialize the cells and add them to the grid
+     */
     private void initializeGrid() {
         Container grid = new Container();
-        grid.setLayout(new GridLayout(gridSize, gridSize));
-
         for (int row = 0; row < gridSize; row++) {
             for (int col = 0; col < gridSize; col++) {
                 cells[row][col] = new Cell(row, col, actionListener);
                 grid.add(cells[row][col]);
             }
         }
-        createDices();
-        startTurn();
+        grid.setLayout(new GridLayout(gridSize, gridSize));
         frame.add(grid, BorderLayout.CENTER);
     }
 
+    /**
+     * Initialize the playground (cells, and players)
+     */
+    private void initializeGame() {
+
+        initializeGrid();
+        resetAllCells();
+        initPlayers();
+        addStarterDices();
+        startTurn();
+
+    }
+
+    /**
+     * Reset ever cell to start a new game
+     */
     private void resetAllCells() {
         for (int row = 0; row < gridSize; row++) {
             for (int col = 0; col < gridSize; col++) {
@@ -139,48 +218,50 @@ public class Main {
         }
     }
 
-    private List<Player> createPlayerList() {
-
-        /**
-         * Get random color for player
-         */
+    /**
+     * Get the available colors
+     * @return list of colors
+     */
+    private List<Color> getColors() {
         List<Color> colors = new ArrayList<>();
         colors.add(Color.BLUE);
         colors.add(Color.BLACK);
         colors.add(Color.RED);
         colors.add(Color.MAGENTA);
+        return colors;
+    }
 
-
-        /**
-         * Add this random color to the player and remove to handle duplicate colors
-         */
+    /**
+     * Create a list of players with its required attributes
+     * @return a list of players
+     */
+    private List<Player> createPlayerList() {
         List<Player> players = new ArrayList<>();
+        List<Color> colors = getColors();
 
         for (int i = 0; i < NUMBER_OF_PLAYER; i++){
             Random rand = new Random();
-            int index = rand.nextInt(colors.size());
             Player player = new Player();
+            int index = rand.nextInt(colors.size());
             player.setColor(colors.get(index));
-            colors.remove(index);
-            player.setNpc(true);
+            colors.remove(index); //remove from the Array so there will be no duplicate
+            player.setNpc(true); //TODO: there should be only one human player
             players.add(player);
         }
 
         /**
          * This will be the human player
          */
-        players.get(0).setNpc(false);
+        players.get(0).setNpc(false); //TODO: finish the npc feature
         players.get(0).setCurrentPlayer(true);
-
-        /**
-         * Add the created player to the list
-         */
 
         return players;
     }
 
-    private void createDices() {
-        resetAllCells();
+    /**
+     * Initialize the players and add them to the cells randomly
+     */
+    private void initPlayers() {
 
         players = createPlayerList();
 
@@ -208,16 +289,6 @@ public class Main {
             }
         }
 
-        addStarterDices();
-
-//        // Initialize neighbour counts
-//        for (int row = 0; row < gridSize; row++) {
-//            for (int col = 0; col < gridSize; col++) {
-//                if (!cells[row][col].isAMine()) {
-//                    cells[row][col].updateNeighbourCount();
-//                }
-//            }
-//        }
     }
 
     /**
@@ -240,16 +311,46 @@ public class Main {
         }
     }
 
+    /**
+     * Add the extra dices at the end of the turn to the current player
+     * @param player is the current player
+     */
     private void addExtraDices(Player player){
         Random rand = new Random();
-        List<Cell> cells = getPlayerCells(player);
-        int size = cells.size();
-        for (int d = size; d != 0; d--){
-            int index = rand.nextInt(size);
-            cells.get(index).incrementValue();
+        List<Cell> playerCells = getPlayerCells(player);
+        int numberOfDicesToGive = playerCells.size();
+        List<Cell> cells = getPlayerCellsBelowValue(player, 8);
+        if (cells.size() > 0) {
+            for (int d = numberOfDicesToGive; d != 0; d--){
+                int index = rand.nextInt(cells.size());
+                cells.get(index).incrementValue();
+                if (cells.get(index).getValue() == 8) {
+                    cells.remove(index);
+                    if(cells.size() == 0){
+                        break;
+                    }
+                }
+            }
         }
     }
 
+    private List<Cell> getPlayerCellsBelowValue(Player player, int value) {
+        List<Cell> result = new ArrayList<>();
+        for (int row = 0; row < gridSize; row++) {
+            for (int col = 0; col < gridSize; col++) {
+                if (cells[row][col].getPlayer() == player && cells[row][col].getValue() < value) {
+                    result.add(cells[row][col]);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get the cells of the specified player
+     * @param player is the player whose cells will be returned
+     * @return the cells of the given player
+     */
     private List<Cell> getPlayerCells(Player player) {
         List<Cell> result = new ArrayList<>();
         for (int row = 0; row < gridSize; row++) {
@@ -262,8 +363,12 @@ public class Main {
         return result;
     }
 
+    /**
+     * Enable the cells which does not belong to the current player and next to the attack cell
+     * @param cell is the cell where the attack started
+     */
     private void enableEnemyCells(Cell cell){
-        Cell[] neighbours = cell.getNeighbours(cells);
+        Cell[] neighbours = cell.getNeighbours(cells, gridSize);
         for (Cell neighbour : neighbours) {
             if (neighbour == null || neighbour.getPlayer().isCurrentPlayer()) {
                 continue;
@@ -272,6 +377,9 @@ public class Main {
         }
     }
 
+    /**
+     * Disable every cell so only those will be enabled that should be picked
+     */
     private void disableAllCells() {
         for (int row = 0; row < gridSize; row++) {
             for (int col = 0; col < gridSize; col++) {
@@ -280,36 +388,50 @@ public class Main {
         }
     }
 
-    private boolean isAttackSuccessfull(Cell [] war) {
+    /**
+     * Roll with every dices on the given cell
+     * @param cell is the cell where the rolls happen
+     * @return the accumulated result of the rolls
+     */
+    private int roll(Cell cell){
+        int result = 0;
+        for (int i = 0; i < cell.getValue(); i++) {
+            result += (int)(Math.random()*6+1);
+        }
+        return result;
+    }
+
+    /**
+     * Check if the given war was successful or not
+     * @param war is the current war with war[0] as the attacker and war[1] as the defender cell
+     * @return true if the attack was successful
+     */
+    private boolean isAttackSuccessful(Cell [] war) {
         Cell attacker = war[0];
         Cell defender = war[1];
 
-        int resultOfAttacker = 0;
-        int resultOfDeffender = 0;
-
-        for (int i = 0; i < attacker.getValue(); i++) {
-            resultOfAttacker += (int)(Math.random()*6+1);
-        }
-
-        for (int i = 0; i < defender.getValue(); i++) {
-            resultOfDeffender += (int)(Math.random()*6+1);
-        }
-
-        System.out.println(resultOfAttacker);
-        System.out.println(resultOfDeffender);
-        return resultOfAttacker > resultOfDeffender;
+        return roll(attacker) > roll(defender);
     }
 
-    private void moveToWonField(Cell cell, Cell[] war) {
+    /**
+     * Set the properties of the won cell based on the attacker cell
+     * @param currentCell is the cell which has been captured
+     * @param war is the current war between two cells
+     */
+    private void moveToWonField(Cell currentCell, Cell[] war) {
         Cell attackerCell = war[0];
-        cell.setPlayer(attackerCell.getPlayer());
-        cell.setForeground(attackerCell.getForeground());
-        cell.setValue(attackerCell.getValue()-1);
-        cell.setText(String.valueOf(attackerCell.getValue()-1));
+        currentCell.setPlayer(attackerCell.getPlayer());
+        currentCell.setForeground(attackerCell.getForeground());
+        currentCell.setValue(attackerCell.getValue()-1);
+        currentCell.setText(String.valueOf(attackerCell.getValue()-1));
         attackerCell.setValue(1);
         attackerCell.setText("1");
     }
 
+    /**
+     * Enable the cells which belongs to the given player
+     * @param player is the player which cells will be enabled
+     */
     private void enablePlayerCells(Player player) {
         List<Cell> cells = getPlayerCells(player);
         for (Cell cell : cells) {
@@ -319,6 +441,10 @@ public class Main {
         }
     }
 
+    /**
+     * Handles the cell which has been clicked
+     * @param cell is the currently clicked cell
+     */
     private void handleCell(Cell cell) {
 
         if (cell.getPlayer().isCurrentPlayer()){
@@ -327,7 +453,7 @@ public class Main {
             enableEnemyCells(cell);
         } else {
             war[1] = cell;
-            if (isAttackSuccessfull(war)) {
+            if (isAttackSuccessful(war)) {
                 moveToWonField(cell, war);
                 disableAllCells();
                 enablePlayerCells(cell.getPlayer());
@@ -341,23 +467,9 @@ public class Main {
         checkForWin();
     }
 
-    private void revealBoardAndDisplay(String message) {
-        for (int row = 0; row < gridSize; row++) {
-            for (int col = 0; col < gridSize; col++) {
-                if (!cells[row][col].isEnabled()) {
-                    cells[row][col].getValue();
-                }
-            }
-        }
-
-        JOptionPane.showMessageDialog(
-                frame, message, "Game Over",
-                JOptionPane.ERROR_MESSAGE
-        );
-
-        createDices();
-    }
-
+    /**
+     * Check if the player won the game
+     */
     private void checkForWin() {
         boolean won = true;
         outer:
@@ -378,7 +490,7 @@ public class Main {
         }
     }
 
-    private static void run(final int gridSize) {
+    private static void run() {
         try {
             // Totally optional. But this applies the look and
             // feel for the current OS to the a application,
@@ -386,11 +498,10 @@ public class Main {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignore) { }
         // Launch the program
-        new Main(gridSize);
+        new Main();
     }
 
     public static void main(String[] args) {
-        final int gridSize = 4;
-        SwingUtilities.invokeLater(() -> Main.run(gridSize));
+        SwingUtilities.invokeLater(() -> Main.run());
     }
 }
